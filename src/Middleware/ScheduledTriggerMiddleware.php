@@ -7,10 +7,26 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Eekay\LaravelUsageTrigger\Services\NotificationService;
 use Symfony\Component\HttpFoundation\Response;
 
 class ScheduledTriggerMiddleware
 {
+    /**
+     * Notification service instance
+     *
+     * @var NotificationService
+     */
+    protected NotificationService $notificationService;
+
+    /**
+     * Create a new middleware instance
+     */
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
+
     /**
      * Handle an incoming request.
      *
@@ -88,8 +104,31 @@ class ScheduledTriggerMiddleware
                         $this->incrementDailyCount($dailyCountKey);
                     }
 
+                    // Send success notification
+                    $this->notificationService->notify(
+                        $taskName,
+                        'success',
+                        "Task executed successfully",
+                        [
+                            'command' => $config['command'] ?? null,
+                            'timestamp' => time(),
+                        ]
+                    );
+
                 } catch (\Exception $e) {
                     Log::error("Task '{$taskName}' execution failed: " . $e->getMessage());
+
+                    // Send failure notification
+                    $this->notificationService->notify(
+                        $taskName,
+                        'failure',
+                        "Task execution failed: " . $e->getMessage(),
+                        [
+                            'command' => $config['command'] ?? null,
+                            'error' => $e->getMessage(),
+                            'timestamp' => time(),
+                        ]
+                    );
 
                     // Handle retries
                     if (($config['retries'] ?? 0) > 0) {
@@ -184,11 +223,32 @@ class ScheduledTriggerMiddleware
         if ($retries < $maxRetries) {
             Cache::put($retryKey, $retries + 1, 3600); // 1 hour expiry
 
-            Log::warning("Retrying task '{$taskName}', attempt " . ($retries + 1) . "/{$maxRetries}");
+            $attempt = $retries + 1;
+            Log::warning("Retrying task '{$taskName}', attempt {$attempt}/{$maxRetries}");
 
-            // Retry after a short delay
-            sleep(5);
-            $this->executeTask($taskName, $config);
+            // Send retry notification
+            $this->notificationService->notify(
+                $taskName,
+                'retry',
+                "Retrying task execution (attempt {$attempt}/{$maxRetries})",
+                [
+                    'command' => $config['command'] ?? null,
+                    'attempt' => $attempt,
+                    'max_retries' => $maxRetries,
+                    'error' => $e->getMessage(),
+                    'timestamp' => time(),
+                ]
+            );
+
+            // Retry asynchronously after a short delay to avoid blocking the request
+            if (config('queue.default') !== 'sync') {
+                dispatch(function () use ($taskName, $config) {
+                    $this->executeTask($taskName, $config);
+                })->delay(now()->addSeconds(5));
+            } else {
+                // Fallback: immediate retry if queue is sync (not ideal but works)
+                $this->executeTask($taskName, $config);
+            }
         } else {
             Log::error("Task '{$taskName}' failed after {$maxRetries} retries");
             Cache::forget($retryKey);
@@ -200,8 +260,8 @@ class ScheduledTriggerMiddleware
      */
     private function shouldRunScheduledTrigger(): bool
     {
-        // Check environment variable first (allows overriding local/development)
-        $enabled = env('SCHEDULED_TRIGGER_ENABLED');
+        // Check configuration (reads from env via config file)
+        $enabled = config('scheduled-trigger.enabled');
 
         // If explicitly disabled, skip
         if ($enabled === 'false' || $enabled === false || $enabled === '0') {

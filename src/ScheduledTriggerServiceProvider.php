@@ -20,6 +20,9 @@ class ScheduledTriggerServiceProvider extends ServiceProvider
             __DIR__.'/../config/scheduled-trigger.php',
             'scheduled-trigger'
         );
+
+        // Register NotificationService as singleton
+        $this->app->singleton(\Eekay\LaravelUsageTrigger\Services\NotificationService::class);
     }
 
     /**
