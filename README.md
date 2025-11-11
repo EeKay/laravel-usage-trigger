@@ -4,7 +4,7 @@
 [![MIT Licensed](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE.md)
 [![Total Downloads](https://img.shields.io/packagist/dt/eekay/laravel-usage-trigger.svg?style=flat-square)](https://packagist.org/packages/eekay/laravel-usage-trigger)
 
-**Trigger Laravel scheduled tasks when users visit your application - Perfect for hosting platforms without cron job support**
+**Trigger Laravel scheduled tasks when users visit your application - Perfect for hosting platforms without cron job support (or that make you pay for extra agents etc. to enable it)**
 
 A Laravel package that executes Artisan commands when users visit your application, based on configurable time intervals. Perfect for Digital Ocean App Platform, Heroku, and other hosting providers that don't initially support traditional cron jobs (without adding extra worker, etc.).
 
